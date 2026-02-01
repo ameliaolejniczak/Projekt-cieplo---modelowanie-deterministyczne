@@ -26,8 +26,9 @@ class HeatSolver:
 
     def apply_boundary_conditions(self, bc):
         self.A = bc.modify_matrix(self.A)
+        print(np.linalg.cond(self.A))
 
     def step(self, u, source, bc):
-        rhs = u + self.ht * source * u
+        rhs = u + self.ht * source
         rhs = bc.modify_rhs(rhs)
         return np.linalg.solve(self.A, rhs)

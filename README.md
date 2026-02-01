@@ -1,2 +1,2 @@
-# Projekt-ciep-o---modelowanie-deterministyczne
+# Projekt ciepło - modelowanie-deterministyczne
 Repozytorium zawiera projekt modelujący ogrzewanie domu.

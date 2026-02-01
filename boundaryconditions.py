@@ -48,6 +48,7 @@ class BoundaryConditions:
             if "top" in name:
                 A[mask, :] = (1 / hy * np.kron(D1_right_y, id_x) + beta * I)[mask, :]
 
+
         return A
 
     def modify_rhs(self, rhs):

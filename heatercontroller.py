@@ -6,9 +6,15 @@ class HeaterController:
 
     def compute_source(self, u):
         source = np.zeros_like(u)
+
         for name, heater in self.room.heaters.items():
             avg_temp = np.mean(u[heater.mask])
+            rho = 101325.0 / (287.05 * np.mean(u[heater.mask]))
+            c = 1005.0
+            V_cell = self.room.hx * self.room.hy * 2.5
+            n = np.sum(heater.mask)
             if heater.is_on(avg_temp):
-                source[heater.mask] = heater.power
+                S = heater.power / (rho * c * V_cell * n)
+                source[heater.mask] = S
 
         return source
