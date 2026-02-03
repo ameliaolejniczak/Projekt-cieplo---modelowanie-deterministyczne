@@ -1,180 +1,216 @@
 import numpy as np
 import matplotlib.pyplot as plt
-from matplotlib.animation import FuncAnimation
 import tqdm
 from room import Room
 from heater import Heater
-from heatsolver import HeatSolver
-from boundaryconditions import BoundaryConditions
 from heatercontroller import HeaterController
+from boundaryconditions import BoundaryConditions
+from heatsolver import HeatSolver
+import matplotlib.animation as animation
 
-# tworzenie macierzy ewolucji
-# dyskretyzacja czasu
-ht = 1
-t = np.arange(0, 7200.0, ht)
+room_width = 2.0
+room_length = 2.0
 
-# dyskretyzacja przestrzeni
-Nx, Ny = 30, 30
-x, y = np.linspace(0, 3, Nx), np.linspace(0, 3, Ny)
-# x, y = np.linspace(0, 3, Nx), np.linspace(0, 3, Ny)
+c = 1005.0
+p = 101325.0
+P = 915.0
+r = 287.05
+
+U_window = 0.9 #załącznik 2.
+U_wall = 0.2
+lambda_window = 0.96
+lambda_air = 0.0262
+
+ht = 1.0
+T = 3600.0 * 24
+t = np.arange(0, T, ht)
+
+Nx, Ny = 20, 20
+x = np.linspace(0, room_width, Nx)
+y = np.linspace(0, room_length, Ny)
 hx, hy = x[1] - x[0], y[1] - y[0]
-room = Room(Nx, Ny, hx, hy, 0, 0, 3, 3)
-X, Y = np.meshgrid(room.x, room.y)
+room1 = Room(Nx, Ny, hx, hy, 0, 0, room_width, room_length)
+room2 = Room(Nx, Ny, hx, hy, 0, 0, room_width, room_length)
+room3 = Room(Nx, Ny, hx, hy, 0, 0, room_width, room_length)
+lambda_wall = U_wall * hx
+lambda_window = U_window * hx
+
+X, Y = np.meshgrid(x, y)
 X_flat, Y_flat = X.flatten(), Y.flatten()
 
-# pierwsza przykładowa pozycja grzejnika
-# heater_mask = np.where((Y_flat > -0.8) & (Y_flat < -0.6) & (X_flat > -0.3) & (X_flat < 0.3), True, False)
-# heater_mask = np.where((Y_flat > 0.05) & (Y_flat < 0.15) & (X_flat > 1) & (X_flat < 2), True, False)
-heater_mask = np.where((Y_flat < 2.9) & (Y_flat > 2.8) & (X_flat > 1) & (X_flat < 2), True, False)
-P = 1267.0
-heater_power = P
-# heater_power = 200
-heater = Heater(heater_mask, heater_power, 298)
-room.add_heater("heater 1", heater)
-lambda_window = 0.96
-#window = np.where((Y_flat == 1) & (X_flat > -0.3) & (X_flat < 0.3), True, False)
-window = np.where((Y_flat == y[-1]) & (X_flat > 1) & (X_flat < 2), True, False)
-room.add_window("window top 1", window, lambda_window)
+T_out = 263.0
+T_initial = 293.0
+T_target = 295.0
 
+window_width = 1.5
+window_center = room_width / 2
+window_x_min = window_center - window_width / 2
+window_x_max = window_center + window_width / 2
+ind_window = (Y_flat == y[-1]) & (X_flat >= window_x_min) & (X_flat <= window_x_max)
+room1.add_window("top", ind_window, lambda_window)
+room2.add_window("top", ind_window, lambda_window)
+room3.add_window("top", ind_window, lambda_window)
 
+ind_left = np.where(X_flat == x[0], True, False)
+ind_right = np.where(X_flat == x[-1], True, False)
+ind_bottom = np.where(Y_flat == y[0], True, False)
+ind_top = np.where(Y_flat == y[-1], True, False) & ~ind_window
+room1.add_walls("left", ind_left, lambda_wall)
+room1.add_walls("right", ind_right, lambda_wall)
+room1.add_walls("bottom", ind_bottom, lambda_wall)
+room1.add_walls("top", ind_top, lambda_wall)
+room2.add_walls("left", ind_left, lambda_wall)
+room2.add_walls("right", ind_right, lambda_wall)
+room2.add_walls("bottom", ind_bottom, lambda_wall)
+room2.add_walls("top", ind_top, lambda_wall)
+room3.add_walls("left", ind_left, lambda_wall)
+room3.add_walls("right", ind_right, lambda_wall)
+room3.add_walls("bottom", ind_bottom, lambda_wall)
+room3.add_walls("top", ind_top, lambda_wall)
 
-# identyfikacja punktów brzegowych w spłaszczonych wektorach przestrzeni
-lambda_mat = 1.7   # przewodność ściany
-ind_brzeg_left = np.where(X_flat == x[0], True, False)
-room.add_walls("left 1", ind_brzeg_left, lambda_mat)
-ind_brzeg_right = np.where(X_flat == x[-1], True, False)
-room.add_walls("right 1", ind_brzeg_right, lambda_mat)
-ind_brzeg_bottom = np.where((Y_flat == y[0]), True, False)
-room.add_walls("bottom 1", ind_brzeg_bottom, lambda_mat)
-ind_brzeg_top = np.where((Y_flat == y[-1]) & ((X_flat < 1) | (X_flat > 2)), True, False)
-# ind_brzeg_top = np.where(((Y_flat == y[-1]) & ((X_flat < -0.3) | (X_flat > 0.3))), True, False)
-room.add_walls("top 1", ind_brzeg_top, lambda_mat)
+radiator_width = 1.0
+offset = 2 * hy
+rad_x_min = window_center - radiator_width / 2
+rad_x_max = window_center + radiator_width / 2
 
-solver = HeatSolver(room, alpha = 19.0 * 10**(-5), ht = 0.1)
-bc = BoundaryConditions(room)
-controller = HeaterController(room)
+radiator_height = radiator_width
+rad_y_center = room_length / 2
+rad_y_min = rad_y_center - radiator_height / 2
+rad_y_max = rad_y_center + radiator_height / 2
 
-solver.apply_boundary_conditions(bc)
+ind_radiator_top = (Y_flat <= room_width - offset) & (Y_flat > room_width - offset - 3 * hy) & (X_flat >= rad_x_min) & (X_flat <= rad_x_max)
+heater_top = Heater(ind_radiator_top, P, T_target)
+room1.add_heater("heater", heater_top)
+ind_radiator_bottom = (Y_flat >= offset) & (Y_flat < offset + 3 * hy) & (X_flat >= rad_x_min) & (X_flat <= rad_x_max)
+heater_bottom = Heater(ind_radiator_bottom, P, T_target)
+room2.add_heater("heater", heater_bottom)
+ind_radiator_left = (X_flat >= offset) & (X_flat < offset + 3 * hx) & (Y_flat >= rad_y_min) & (Y_flat <= rad_y_max)
+heater_left = Heater(ind_radiator_left, P, T_target)
+room3.add_heater("heater", heater_left)
 
-u0 = np.ones(len(X_flat)) * 292
-u = u0.copy()
+bc1 = BoundaryConditions(room1)
+bc2 = BoundaryConditions(room2)
+bc3 = BoundaryConditions(room3)
+solver1 = HeatSolver(room1, ht)
+solver1.apply_boundary_conditions(bc1)
+solver2 = HeatSolver(room2, ht)
+solver2.apply_boundary_conditions(bc2)
+solver3 = HeatSolver(room3, ht)
+solver3.apply_boundary_conditions(bc3)
 
-indices = ind_brzeg_left | ind_brzeg_right | ind_brzeg_top | ind_brzeg_bottom
+controller1 = HeaterController(room1)
+controller2 = HeaterController(room2)
+controller3 = HeaterController(room3)
 
-frames = []
+u0 = np.ones(Nx * Ny) * 290
+u_current1 = np.zeros(len(u0))
+u_current2 = np.zeros(len(u0))
+u_current3 = np.zeros(len(u0))
 
-for i, time in enumerate(tqdm.tqdm(t)):
-    source = controller.compute_source(u)
-    u = solver.step(u, source, bc)
+energy_usage1 = []
+energy_usage2 = []
+energy_usage3 = []
 
-    if i % 10 == 0:
-        frames.append(u.copy())
+history1 = []
+history2 = []
+history3 = []
+save_interval = 60
 
+for time in tqdm.tqdm(t):
+    if time == t[0]:
+        u_current1 = u0.copy()
+        u_current2 = u0.copy()
+        u_current3 = u0.copy()
+    else:
+        source1 = controller1.compute_source(u_current1)
+        energy_usage1.append(np.sum(source1) * hx * hy)
+        u_current1 = solver1.step(u_current1, source1, bc1)
+        source2 = controller2.compute_source(u_current2)
+        energy_usage2.append(np.sum(source2) * hx * hy)
+        u_current2 = solver2.step(u_current2, source2, bc2)
+        source3 = controller3.compute_source(u_current3)
+        energy_usage3.append(np.sum(source3) * hx * hy)
+        u_current3 = solver3.step(u_current3, source3, bc3)
+        if int(time) % save_interval == 0:
+            history1.append(u_current1.reshape(Nx, Ny).copy())
+            history2.append(u_current2.reshape(Nx, Ny).copy())
+            history3.append(u_current3.reshape(Nx, Ny).copy())
 
-levels = np.linspace(u.min(), u.max(), 50)
-
-plt.contourf(X, Y, u.reshape(Nx, Ny), levels = levels)
-plt.title("Wynik końcowy")
+u_sol_2d = u_current1.reshape(Nx, Ny)
+plt.contourf(x, y, u_sol_2d)
 plt.colorbar()
+plt.show()
+
+fig, axes = plt.subplots(1, 3, figsize=(18, 5))
+results = [u_current1, u_current2, u_current3]
+titles = ["Grzejnik: Pod oknem", "Grzejnik: Naprzeciw okna", "Grzejnik: Z boku"]
+
+# Ustalenie wspólnej skali kolorów (w Celsjuszach dla czytelności)
+# Korzystamy z faktu, że u_current są już przeliczone na Celsjusza w Twoim kodzie
+vmin = min(u.min() for u in results)
+vmax = max(u.max() for u in results)
+
+for i, ax in enumerate(axes):
+    u_2d = results[i].reshape(Nx, Ny)
+    # Rysowanie wykresu
+    im = ax.contourf(x, y, u_2d, levels=30, vmin=vmin, vmax=vmax)
+    ax.set_title(titles[i])
+    ax.set_xlabel("Szerokość [m]")
+    ax.set_ylabel("Długość [m]")
+
+    # Wyświetlenie statystyk pod każdym wykresem
+    print(f"\n--- Statystyki: {titles[i]} ---")
+    print(f"Średnia: {np.mean(results[i]):.2f}°C")
+    print(f"Sigma (std): {np.std(results[i]):.2f}°C")
+    print(f"Max: {results[i].max():.2f}°C | Min: {results[i].min():.2f}°C")
+
+# Dodanie jednego wspólnego paska kolorów
+fig.colorbar(im, ax=axes.ravel().tolist(), label="Temperatura [°C]")
+plt.suptitle("Porównanie rozkładu temperatury w zależności od położenia grzejnika", fontsize=16)
 
 plt.show()
 
-print(max(u - 273))
-print((u - 273).mean())
+u_current1 = u_current1 - 273.0
+print(np.mean(u_current1))
+print(np.std(u_current1))
+print(max(u_current1))
+print(min(u_current1))
 
-fig, ax = plt.subplots()
-levels = np.linspace(u.min(), u.max(), 50)
-contour = ax.contourf(X, Y, frames[0].reshape(Nx, Ny), levels=levels)
+u_current2 = u_current2 - 273.0
+print(np.mean(u_current2))
+print(np.std(u_current2))
+print(max(u_current2))
+print(min(u_current2))
+
+u_current3 = u_current3 - 273.0
+print(np.mean(u_current3))
+print(np.std(u_current3))
+print(max(u_current3))
+print(min(u_current3))
+
+
+print(np.sum(energy_usage1) * ht)
+print(np.sum(energy_usage2) * ht)
+print(np.sum(energy_usage3) * ht)
+
+fig, (ax1, ax2, ax3) = plt.subplots(1, 3, figsize=(15, 5))
+axes = [ax1, ax2, ax3]
+histories = [history1, history2, history3]
+titles = ["Grzejnik: Góra (Okno)", "Grzejnik: Dół", "Grzejnik: Lewo"]
+
+vmin, vmax = 263, 305
+
+levels = np.arange(269, 355, 5)
 
 def update(frame):
-    ax.clear()
-    contour = ax.contourf(X, Y, frame.reshape(Nx, Ny), levels=levels)
-    return contour
+    for i in range(3):
+        axes[i].clear()
+        cont = axes[i].contourf(x, y, histories[i][frame], levels=levels)
+        axes[i].set_title(f"{titles[i]}\nMin: {histories[i][frame].min()-273:.1f}°C")
+        if frame == 0 and i == 2: # Dodaj pasek koloru tylko raz
+            fig.colorbar(cont, ax=ax3)
+    fig.suptitle(f"Czas symulacji: {frame * save_interval // 60} min")
 
-anim = FuncAnimation(fig, update, frames=frames, interval=50)
+ani = animation.FuncAnimation(fig, update, frames=len(history1), interval=100, repeat=False)
+plt.tight_layout()
 plt.show()
-
-ht = 1
-t = np.arange(0, 7200.0, ht)
-
-# dyskretyzacja przestrzeni
-Nx, Ny = 30, 30
-x, y = np.linspace(0, 3, Nx), np.linspace(0, 3, Ny)
-# x, y = np.linspace(0, 3, Nx), np.linspace(0, 3, Ny)
-hx, hy = x[1] - x[0], y[1] - y[0]
-room = Room(Nx, Ny, hx, hy, 0, 0, 3, 3)
-X, Y = np.meshgrid(room.x, room.y)
-X_flat, Y_flat = X.flatten(), Y.flatten()
-
-# pierwsza przykładowa pozycja grzejnika
-# heater_mask = np.where((Y_flat > -0.8) & (Y_flat < -0.6) & (X_flat > -0.3) & (X_flat < 0.3), True, False)
-# heater_mask = np.where((Y_flat > 0.05) & (Y_flat < 0.15) & (X_flat > 1) & (X_flat < 2), True, False)
-heater_mask = np.where((Y_flat > 0.1) & (Y_flat < 0.2) & (X_flat > 1) & (X_flat < 2), True, False)
-P = 1267.0
-heater_power = P
-# heater_power = 200
-heater = Heater(heater_mask, heater_power, 298)
-room.add_heater("heater 1", heater)
-lambda_window = 0.96
-#window = np.where((Y_flat == 1) & (X_flat > -0.3) & (X_flat < 0.3), True, False)
-window = np.where((Y_flat == y[-1]) & (X_flat > 1) & (X_flat < 2), True, False)
-room.add_window("window top 1", window, lambda_window)
-
-
-
-# identyfikacja punktów brzegowych w spłaszczonych wektorach przestrzeni
-lambda_mat = 1.7   # przewodność ściany
-ind_brzeg_left = np.where(X_flat == x[0], True, False)
-room.add_walls("left 1", ind_brzeg_left, lambda_mat)
-ind_brzeg_right = np.where(X_flat == x[-1], True, False)
-room.add_walls("right 1", ind_brzeg_right, lambda_mat)
-ind_brzeg_bottom = np.where((Y_flat == y[0]), True, False)
-room.add_walls("bottom 1", ind_brzeg_bottom, lambda_mat)
-ind_brzeg_top = np.where((Y_flat == y[-1]) & ((X_flat < 1) | (X_flat > 2)), True, False)
-# ind_brzeg_top = np.where(((Y_flat == y[-1]) & ((X_flat < -0.3) | (X_flat > 0.3))), True, False)
-room.add_walls("top 1", ind_brzeg_top, lambda_mat)
-
-solver = HeatSolver(room, alpha = 19.0 * 10**(-5), ht = ht)
-bc = BoundaryConditions(room)
-controller = HeaterController(room)
-
-solver.apply_boundary_conditions(bc)
-
-u0 = np.ones(len(X_flat)) * 292
-u = u0.copy()
-
-indices = ind_brzeg_left | ind_brzeg_right | ind_brzeg_top | ind_brzeg_bottom
-
-frames = []
-
-for i, time in enumerate(tqdm.tqdm(t)):
-    source = controller.compute_source(u)
-    u = solver.step(u, source, bc)
-
-    if i % 10 == 0:
-        frames.append(u.copy())
-
-
-levels = np.linspace(u.min(), u.max(), 50)
-
-plt.contourf(X, Y, u.reshape(Nx, Ny), levels = levels)
-plt.title("Wynik końcowy")
-plt.colorbar()
-
-plt.show()
-
-print(max(u - 273))
-print((u - 273).mean())
-
-fig, ax = plt.subplots()
-levels = np.linspace(u.min(), u.max(), 50)
-contour = ax.contourf(X, Y, frames[0].reshape(Nx, Ny), levels=levels)
-
-def update(frame):
-    ax.clear()
-    contour = ax.contourf(X, Y, frame.reshape(Nx, Ny), levels=levels)
-    return contour
-
-anim = FuncAnimation(fig, update, frames=frames, interval=50)
-plt.show()
-
