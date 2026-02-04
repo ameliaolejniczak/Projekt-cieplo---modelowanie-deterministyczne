@@ -16,7 +16,7 @@ p = 101325.0
 P = 915.0
 r = 287.05
 
-U_window = 0.9 #załącznik 2.
+U_window = 0.9
 U_wall = 0.2
 lambda_air = 0.0262
 

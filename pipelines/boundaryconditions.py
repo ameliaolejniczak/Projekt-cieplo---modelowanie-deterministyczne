@@ -8,6 +8,7 @@ class BoundaryConditions:
         self.room = room
         self.lambda_air = lambda_air
         self.u_ext = u_ext
+        self.room.bc = self
 
         self.ind_left = self.room.walls["left"][0]
         self.ind_right = self.room.walls["right"][0]
@@ -27,19 +28,25 @@ class BoundaryConditions:
             self.ind_window = self.room.windows["top"][0]
             self.lambda_window = self.room.windows["top"][1]
 
+    def get_beta(self, side):
+        '''Zwraca betę zewnętrzną lub wewnętrzną w zależności od sąsiedztwa'''
+        if side in self.room.neighbors:
+            _, lambda_inner = self.room.neighbors[side]
+            return lambda_inner / self.lambda_air
+        return self.room.walls[side][1] / self.lambda_air
+
     def modify_matrix(self, A):
         '''Funkcja sluzy do nalozenia na macierz A warunkow brzegowych Robina'''
         id_y = np.eye(self.room.nx)
         id_x = np.eye(self.room.ny)
         I = np.eye(self.room.nx * self.room.ny)
 
-        beta_wall = self.room.walls["left"][1]/self.lambda_air
         beta_window = self.lambda_window/self.lambda_air
 
-        Bx_forward = -np.kron(id_y, D1_forward(self.room.nx)) / self.room.hx + I * beta_wall
-        Bx_backward = np.kron(id_y, D1_backward(self.room.nx)) / self.room.hx + I * beta_wall
-        By_forward = -np.kron(D1_forward(self.room.ny), id_x) / self.room.hy + I * beta_wall
-        By_backward = np.kron(D1_backward(self.room.ny), id_x) / self.room.hy + I * beta_wall
+        Bx_forward = -np.kron(id_y, D1_forward(self.room.nx)) / self.room.hx + I * self.get_beta("left")
+        Bx_backward = np.kron(id_y, D1_backward(self.room.nx)) / self.room.hx + I * self.get_beta("right")
+        By_forward = -np.kron(D1_forward(self.room.ny), id_x) / self.room.hy + I * self.get_beta("bottom")
+        By_backward = np.kron(D1_backward(self.room.ny), id_x) / self.room.hy + I * self.get_beta("top")
         By_backward_window = np.kron(D1_backward(self.room.ny), id_x) / self.room.hy + I * beta_window
 
         A[self.ind_left, :] = Bx_forward[self.ind_left, :]
@@ -52,13 +59,21 @@ class BoundaryConditions:
 
     def modify_rhs(self, rhs):
         '''Funkcja naklada na wektor temperatur warunki brzegowe Robina'''
-        rhs = rhs.copy()
-        beta_wall = self.room.walls["left"][1] / self.lambda_air
-        beta_window = self.lambda_window / self.lambda_air
+        for side in ["left", "right", "bottom", "top"]:
+            beta = self.get_beta(side)
+            current_mask = getattr(self, f"ind_{side}")
 
-        rhs[self.ind_left] = beta_wall * self.u_ext
-        rhs[self.ind_right] = beta_wall * self.u_ext
-        rhs[self.ind_bottom] = beta_wall * self.u_ext
-        rhs[self.ind_top] = beta_wall * self.u_ext
+            if side in self.room.neighbors:
+                neighbor_room, _ = self.room.neighbors[side]
+                u_neighbor = neighbor_room.last_u
+
+                opposite = {"left": "right", "right": "left", "bottom": "top", "top": "bottom"}
+                neighbor_mask = getattr(neighbor_room.bc, f"ind_{opposite[side]}")
+
+                rhs[current_mask] = beta * u_neighbor[neighbor_mask]
+            else:
+                rhs[current_mask] = beta * self.u_ext
+
+        beta_window = self.lambda_window / self.lambda_air
         rhs[self.ind_window] = beta_window * self.u_ext
         return rhs

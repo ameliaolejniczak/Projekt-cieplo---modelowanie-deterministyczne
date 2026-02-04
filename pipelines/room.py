@@ -12,6 +12,7 @@ class Room:
         self.heaters = {}
         self.walls = {}
         self.windows = {}
+        self.neighbors = {}
 
     def add_heater(self, name, heater):
         '''Funkcja dodaje grzejnik do pokoju'''
@@ -25,7 +26,8 @@ class Room:
         '''Funkcja dodaje okno do pokoju'''
         self.windows[name] = (mask, material_params)
 
-
+    def add_neighbor(self, name, neighbor_room):
+        self.neighbors[name] = (neighbor_room, self.walls[name][1])
 
 
 
