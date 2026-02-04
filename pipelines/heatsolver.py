@@ -1,5 +1,5 @@
 import numpy as np
-from functions import D2
+from pipelines.functions import D2
 from scipy.sparse import eye, kron, csc_matrix
 from scipy.sparse.linalg import factorized
 

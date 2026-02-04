@@ -1,4 +1,4 @@
-from functions import D1_backward, D1_forward
+from pipelines.functions import D1_backward, D1_forward
 import numpy as np
 
 
