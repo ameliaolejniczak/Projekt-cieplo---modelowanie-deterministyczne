@@ -43,7 +43,7 @@ T_out = 263.0
 T_initial = 293.0
 T_target = 298.0
 
-window_width = 1.5
+window_width = 1.0
 window_center = room_width / 2
 window_x_min = window_center - window_width / 2
 window_x_max = window_center + window_width / 2
